@@ -1,0 +1,243 @@
+# HyGE-Mamba Default Configuration
+# YAML configuration file for model and training hyperparameters
+
+# =============================================================================
+# Model Configuration
+# =============================================================================
+
+model:
+  # Genome Branch
+  genome:
+    snp_embedding:
+      num_allele_values: 10
+      embedding_dim: 64
+      dropout: 0.1
+
+    position_encoder:
+      num_chromosomes: 10
+      chromosome_embedding_dim: 32
+      position_encoding_dim: 32
+      max_position: 300000000
+      use_sinusoidal: true
+      learnable_chromosomes: true
+
+    mamba_encoder:
+      d_model: 128
+      d_state: 16
+      d_conv: 4
+      expand_factor: 2
+      num_layers: 4
+      dropout: 0.1
+      bidirectional: true
+      use_glu: true
+
+    # CNN compression before Mamba (stride^num_layers = total compression)
+    cnn_stride: 8
+    cnn_num_layers: 2  # 8^2 = 64x compression: 8571 -> 1072 -> 134
+
+    segment_router:
+      num_segments: 100
+      hidden_dim: 128
+      num_attention_heads: 4
+      gate_activation: softmax
+      dropout: 0.1
+
+    hybrid_fusion:
+      input_dim: 128
+      hidden_dim: 256
+      output_dim: 128
+      use_additive: true
+      use_dominance: true
+      use_interaction: true
+      fusion_method: concat_project
+      dropout: 0.1
+
+    recombination_gate:
+      input_dim: 128
+      hidden_dim: 64
+      num_crossover_points: 10
+      temperature: 1.0
+      learnable_temperature: true
+
+    epistasis_mixer:
+      d_model: 128
+      d_state: 16
+      num_layers: 2
+      dropout: 0.1
+      use_residual: true
+
+    output_dim: 128
+
+  # Weather Branch
+  weather:
+    intra_day:
+      input_features: 8
+      d_model: 64
+      d_state: 8
+      num_layers: 2
+      hours_per_day: 24
+      dropout: 0.1
+
+    inter_day:
+      input_dim: 64
+      d_model: 128
+      d_state: 16
+      num_layers: 3
+      max_days: 365
+      dropout: 0.1
+      use_positional_encoding: true
+
+    output_dim: 128
+
+  # G×E Fusion
+  gxe_fusion:
+    genome_dim: 128
+    weather_dim: 128
+    hidden_dim: 256
+    output_dim: 256
+    num_heads: 4
+    fusion_type: gated_cross_attention
+    dropout: 0.1
+    use_residual: true
+
+  # Sparse MoE
+  sparse_moe:
+    router:
+      input_dim: 256
+      num_experts: 8
+      top_k: 2
+      noise_std: 0.1
+      capacity_factor: 1.25
+      use_aux_loss: true
+      aux_loss_weight: 0.01
+
+    expert:
+      input_dim: 256
+      hidden_dim: 512
+      output_dim: 256
+      activation: swiglu
+      dropout: 0.1
+
+    num_shared_experts: 2
+    num_routed_experts: 6
+    share_expert_weights: false
+
+  # Prediction Heads
+  apsim_head:
+    input_dim: 256
+    hidden_dims: [128, 64]
+    num_parameters: 6
+    dropout: 0.1
+
+  curve_decoder:
+    input_dim: 256
+    hidden_dim: 128
+    num_time_steps: 180
+    num_curves: 4
+    use_attention: true
+    num_heads: 4
+    dropout: 0.1
+
+  scalar_head:
+    input_dim: 256
+    hidden_dims: [128, 64]
+    num_traits: 5
+    dropout: 0.1
+
+  # Global model settings
+  use_fp16: false
+  gradient_checkpointing: false
+
+# =============================================================================
+# Training Configuration
+# =============================================================================
+
+training:
+  # Core settings
+  num_epochs: 100
+  gradient_clip_norm: 1.0
+  gradient_accumulation_steps: 1
+
+  # Mixed precision
+  use_amp: false
+  amp_dtype: float16
+
+  # Reproducibility
+  seed: 42
+  deterministic: true
+
+  # Early stopping
+  early_stopping: true
+  early_stopping_patience: 20
+  early_stopping_min_delta: 0.0001
+
+  # Optimizer
+  optimizer:
+    name: adamw
+    lr: 0.0001
+    weight_decay: 0.01
+    betas: [0.9, 0.999]
+    eps: 0.00000001
+
+  # Scheduler
+  scheduler:
+    name: cosine_warmup
+    warmup_epochs: 5
+    warmup_start_lr: 0.0000001
+    min_lr: 0.000001
+
+  # Loss weights
+  loss_weights:
+    apsim_params: 1.0
+    curves: 1.0
+    scalar_traits: 1.0
+    moe_auxiliary: 0.01
+    curve_weights:
+      lai: 1.0
+      biomass: 1.0
+      grain_fill: 1.0
+      water_stress: 1.0
+    trait_weights:
+      yield: 2.0
+      flowering_date: 1.0
+      maturity_date: 1.0
+      plant_height: 0.5
+      harvest_index: 1.0
+
+  # Data
+  data:
+    data_dir: data/
+    batch_size: 32
+    num_workers: 4
+    pin_memory: true
+    train_split: 0.8
+    val_split: 0.1
+    test_split: 0.1
+    max_snp_length: 10000
+    max_weather_days: 180
+    use_augmentation: true
+    snp_mask_prob: 0.1
+    weather_noise_std: 0.05
+
+  # Checkpointing
+  checkpoint:
+    save_dir: checkpoints/
+    save_frequency: 1
+    save_best_only: false
+    metric_for_best: val_loss
+    mode: min
+    max_keep: 5
+
+  # Logging
+  logging:
+    log_dir: logs/
+    log_frequency: 100
+    use_tensorboard: true
+    use_wandb: false
+    wandb_project: hyge-mamba
+    log_gradients: false
+    log_parameters: false
+
+  # Device
+  device: auto
+  distributed: false
